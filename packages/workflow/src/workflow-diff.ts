@@ -3,6 +3,11 @@ import pick from 'lodash/pick';
 
 import type { IConnections, INode, IWorkflowBase } from '.';
 
+export type WorkflowDiffBase = Omit<
+	IWorkflowBase,
+	'id' | 'active' | 'activeVersionId' | 'isArchived'
+>;
+
 export type DiffableNode = Pick<INode, 'id' | 'parameters' | 'name'>;
 export type DiffableWorkflow<N extends DiffableNode = DiffableNode> = {
 	nodes: N[];
@@ -192,7 +197,7 @@ export type GroupedWorkflowHistory<W extends DiffableWorkflow<DiffableNode>> = {
 	to: W;
 };
 
-function compareWorkflows<W extends IWorkflowBase = IWorkflowBase>(
+function compareWorkflows<W extends WorkflowDiffBase = WorkflowDiffBase>(
 	previous: W,
 	next: W,
 ): GroupedWorkflowHistory<W> {
@@ -207,7 +212,7 @@ function compareWorkflows<W extends IWorkflowBase = IWorkflowBase>(
 }
 
 export type DiffRule<
-	W extends IWorkflowBase = IWorkflowBase,
+	W extends WorkflowDiffBase = WorkflowDiffBase,
 	N extends W['nodes'][number] = W['nodes'][number],
 > = (
 	prev: GroupedWorkflowHistory<W>,
@@ -215,7 +220,7 @@ export type DiffRule<
 	diff: WorkflowDiff<N>,
 ) => boolean;
 
-export function groupWorkflows<W extends IWorkflowBase = IWorkflowBase>(
+export function groupWorkflows<W extends WorkflowDiffBase = WorkflowDiffBase>(
 	workflows: W[],
 	rules: Array<DiffRule<W>>,
 	skipRules: Array<DiffRule<W>>,

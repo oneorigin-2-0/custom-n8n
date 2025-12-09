@@ -1,7 +1,7 @@
 import { Service } from '@n8n/di';
-import { DataSource, LessThan, Repository } from '@n8n/typeorm';
+import { DataSource, In, LessThan, Repository } from '@n8n/typeorm';
 import { DateUtils } from '@n8n/typeorm/util/DateUtils';
-import { GroupedWorkflowHistory } from 'n8n-workflow';
+import { GroupedWorkflowHistory, groupWorkflows, RULES } from 'n8n-workflow';
 
 import { WorkflowHistory, WorkflowEntity } from '../entities';
 import { WorkflowPublishHistoryRepository } from './workflow-publish-history.repository';
@@ -56,25 +56,37 @@ export class WorkflowHistoryRepository extends Repository<WorkflowHistory> {
 			_prev: GroupedWorkflowHistory<WorkflowHistory>,
 			next: GroupedWorkflowHistory<WorkflowHistory>,
 			// diff: WorkflowDiff<WorkflowHistory['nodes']>,
-		) => next.to.name || next.to.description || activeVersions.includes(next.to.versionId);
+		): boolean =>
+			!!next.to.name || !!next.to.description || activeVersions.includes(next.to.versionId);
 	}
 
-	async pruneHistory() {
+	async pruneHistory(now = new Date()): Promise<number> {
 		// const { pruneDataMaxAge, pruneDataMaxCount } = this.globalConfig.executions;
 
 		//
 
 		// Find ids of all executions that were stopped longer that pruneDataMaxAge ago
-		const endDate = new Date();
+		const endDate = new Date(now);
 		endDate.setHours(endDate.getHours() - this.minimumCompactAgeHours);
 
-		const startDate = new Date();
+		const startDate = new Date(now);
 		startDate.setHours(endDate.getHours() - this.minimumCompactAgeHours);
 		startDate.setDate(startDate.getDate() - this.compactingTimeRangeDays);
 
 		// 1. Get workflows with recent changes
 
-		const workflowsById = await this.manager
+		// const allVersions = await this.manager
+		// 	.createQueryBuilder(WorkflowHistory, 'wh')
+		// 	.where('wh.createdAt <= :endDate', {
+		// 		endDate: DateUtils.mixedDateToUtcDatetimeString(endDate),
+		// 	})
+		// 	.andWhere('wh.createdAt >= :startDate', {
+		// 		startDate: DateUtils.mixedDateToUtcDatetimeString(startDate),
+		// 	})
+		// 	.orderBy('wh.workflowId', 'ASC')
+		// 	.getRawMany<never>();
+
+		const allVersions = await this.manager
 			.createQueryBuilder(WorkflowHistory, 'wh')
 			.where('wh.createdAt <= :endDate', {
 				endDate: DateUtils.mixedDateToUtcDatetimeString(endDate),
@@ -83,18 +95,34 @@ export class WorkflowHistoryRepository extends Repository<WorkflowHistory> {
 				startDate: DateUtils.mixedDateToUtcDatetimeString(startDate),
 			})
 			.orderBy('wh.createdAt', 'ASC')
-			.groupBy('wh.workflowId')
-			.getRawMany<never>();
+			.getMany();
 
-		for (const workflows of workflowsById) {
-			// const publishedVersions = await this.workflowPublishHistoryRepository.getPublishedVersions(
-			// 	workflows.workflowId,
-			// );
-			// const grouped = groupWorkflows(
-			// 	workflows,
-			// 	[RULES.mergeAdditiveChanges],
-			// 	[this.makeSkipActiveAndNamedVersionsRule(publishedVersions.map((x) => x.versionId))],
-			// );
+		// Group by workflowId
+		const groupedByWorkflowId = allVersions.reduce((acc, version) => {
+			const workflowId = version.workflowId;
+			if (!acc.has(workflowId)) {
+				acc.set(workflowId, []);
+			}
+			acc.get(workflowId)!.push(version);
+			return acc;
+		}, new Map<string, WorkflowHistory[]>());
+
+		const versionsToDelete = [];
+		for (const [workflowId, workflows] of groupedByWorkflowId.entries()) {
+			const publishedVersions =
+				await this.workflowPublishHistoryRepository.getPublishedVersions(workflowId);
+			const grouped = groupWorkflows<WorkflowHistory>(
+				workflows,
+				[RULES.mergeAdditiveChanges],
+				[this.makeSkipActiveAndNamedVersionsRule(publishedVersions.map((x) => x.versionId))],
+			);
+			for (const group of grouped) {
+				for (const wf of group.groupedWorkflows) {
+					versionsToDelete.push(wf.versionId);
+				}
+			}
 		}
+		await this.delete({ versionId: In(versionsToDelete) });
+		return versionsToDelete.length;
 	}
 }
