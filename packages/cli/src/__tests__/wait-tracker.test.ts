@@ -490,8 +490,7 @@ describe('WaitTracker', () => {
 
 			it('should not resume parent execution when child execution status is "waiting"', async () => {
 				// ARRANGE
-				const { parentExecution, postExecutePromise, subworkflowResults } =
-					setupParentExecutionTest(true);
+				const { postExecutePromise, subworkflowResults } = setupParentExecutionTest(true);
 
 				// Modify subworkflowResults to have status 'waiting'
 				const waitingSubworkflowResults: IRun = {
