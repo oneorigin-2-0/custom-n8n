@@ -204,13 +204,14 @@ test.describe('CAT-1929: Parent should not resume until child with multiple wait
 		const finalChildExecution = await api.workflows.getExecution(childExecution.id);
 		expect(finalChildExecution.status).toBe('success');
 
-		// Get full parent execution data and verify it received the final child output
-		const fullParentExecution = await api.workflows.getExecution(parentExecution.id);
-		const executionData = flatted.parse(fullParentExecution.data);
-
 		// Verify Execute Workflow node received child's FINAL output (after both waits)
-		const executeWorkflowOutput = executionData.resultData.runData['Execute Workflow'];
-		expect(executeWorkflowOutput).toBeDefined();
-		expect(executeWorkflowOutput[0].data.main[0][0].json.stage).toBe('completed');
+		await retryUntil(async () => {
+			// Get full parent execution data and verify it received the final child output
+			const fullParentExecution = await api.workflows.getExecution(parentExecution.id);
+			const executionData = flatted.parse(fullParentExecution.data);
+			const executeWorkflowOutput = executionData.resultData.runData['Execute Workflow'];
+			expect(executeWorkflowOutput).toBeDefined();
+			expect(executeWorkflowOutput[0].data.main[0][0].json.stage).toBe('completed');
+		});
 	});
 });
