@@ -1,7 +1,7 @@
 # --- Stage 1: Build ---
 FROM node:22-slim AS builder
 
-# Install system dependencies for native modules
+# Install system dependencies
 RUN apt-get update && apt-get install -y \
     python3 \
     make \
@@ -16,21 +16,24 @@ RUN apt-get update && apt-get install -y \
     libpixman-1-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Pin to pnpm 9.x
-RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
+# Enable corepack for pnpm 10.x
+RUN corepack enable
 
 WORKDIR /app
 
-# Copy everything at once - simpler and works with any repo structure
+# Copy everything
 COPY . .
 
-# Memory management + reduced concurrency for NAS
+# Memory management
 ENV NODE_OPTIONS="--max-old-space-size=4096"
 
-# Install dependencies
-RUN pnpm install --no-frozen-lockfile
+# Step 1: Install deps WITHOUT running lifecycle scripts (this will succeed)
+RUN pnpm install --no-frozen-lockfile --ignore-scripts
 
-# Build
+# Step 2: Run postinstall scripts explicitly with full output
+RUN pnpm rebuild || true
+
+# Step 3: Build - this will show actual errors
 RUN pnpm build
 
 # Prune dev dependencies
