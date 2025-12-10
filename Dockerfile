@@ -24,10 +24,11 @@ ENV NODE_OPTIONS="--max-old-space-size=4096"
 
 RUN pnpm install --no-frozen-lockfile --ignore-scripts
 
-# Rebuild native modules for x86
-RUN pnpm rebuild
+# Only rebuild the native modules we actually need
+RUN pnpm rebuild sqlite3 || true
+RUN pnpm rebuild better-sqlite3 || true
+RUN pnpm rebuild @parcel/watcher || true
 
-# Build packages one at a time to manage memory
 RUN pnpm --filter=n8n-workflow build
 RUN pnpm --filter=n8n-core build  
 RUN pnpm --filter=n8n-nodes-base build
