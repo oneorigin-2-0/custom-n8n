@@ -1,18 +1,9 @@
 FROM node:22-slim AS builder
 
 RUN apt-get update && apt-get install -y \
-    python3 \
-    make \
-    g++ \
-    git \
-    build-essential \
-    libcairo2-dev \
-    libpango1.0-dev \
-    libjpeg-dev \
-    libgif-dev \
-    librsvg2-dev \
-    libpixman-1-dev \
-    libsqlite3-dev \
+    python3 make g++ git build-essential \
+    libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev \
+    librsvg2-dev libpixman-1-dev libsqlite3-dev \
     && rm -rf /var/lib/apt/lists/*
 
 RUN corepack enable
@@ -24,17 +15,10 @@ ENV NODE_OPTIONS="--max-old-space-size=4096"
 
 RUN pnpm install --no-frozen-lockfile --ignore-scripts
 
-# Only rebuild the native modules we actually need
-RUN pnpm rebuild sqlite3 || true
-RUN pnpm rebuild better-sqlite3 || true
-RUN pnpm rebuild @parcel/watcher || true
+RUN pnpm rebuild sqlite3 better-sqlite3 || true
 
-RUN pnpm --filter=n8n-workflow build
-RUN pnpm --filter=n8n-core build  
-RUN pnpm --filter=n8n-nodes-base build
-RUN pnpm --filter=@n8n/n8n-nodes-langchain build
-RUN pnpm --filter=n8n-editor-ui build
-RUN pnpm --filter=n8n build
+# Build base packages first, then let pnpm parallelize the rest
+RUN pnpm --filter=@n8n/config --filter=@n8n/errors build && pnpm build
 
 RUN pnpm prune --prod
 
@@ -42,10 +26,7 @@ FROM node:22-slim
 
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y \
-    graphicsmagick \
-    tini \
-    libsqlite3-0 \
+RUN apt-get update && apt-get install -y graphicsmagick tini libsqlite3-0 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /app /app
