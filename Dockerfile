@@ -1,44 +1,46 @@
-# --- Stage 1: Build ---
+# --- Stage 1: Builder ---
 FROM node:22-slim AS builder
 
-# 1. Install basics
-RUN apt-get update && apt-get install -y python3 make g++ git
+# 1. Install system build tools
+RUN apt-get update && apt-get install -y python3 make g++ git jq
 
-# 2. Block heavy/useless downloads (Saves RAM & prevents crashes)
-ENV CYPRESS_INSTALL_BINARY=0
-ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
-ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
-
-# 3. Use a specific, stable PNPM version (Safe for n8n)
+# 2. Force a specific, stable PNPM version (v9)
+# We use 'jq' to delete the "packageManager" field from package.json
+# so it stops trying to download pnpm v10 automatically.
 RUN corepack enable && corepack prepare pnpm@9.12.0 --activate
 
 WORKDIR /app
 
-# Copy source
+# Copy all files
 COPY . .
 
-# 4. Install dependencies with increased memory limit
-# We use --no-frozen-lockfile to prevent "lockfile mismatch" errors since you forked it
-ENV NODE_OPTIONS="--max-old-space-size=4096"
-RUN pnpm install --no-frozen-lockfile
+# 3. SURGICAL FIX: Remove the forced pnpm version from package.json
+RUN jq 'del(.packageManager)' package.json > temp.json && mv temp.json package.json
 
-# 5. Build
+# 4. Install dependencies WITHOUT running heavy scripts
+# This prevents the "ELIFECYCLE" crash by skipping post-install compilations
+ENV NODE_OPTIONS="--max-old-space-size=4096"
+RUN pnpm install --no-frozen-lockfile --ignore-scripts
+
+# 5. Build the application
+# We run the build explicitly now
 RUN pnpm build
 
-# 6. Prune (Remove dev files)
+# 6. Clean up (Prune)
 RUN pnpm prune --prod
 
-# --- Stage 2: Run ---
+# --- Stage 2: Runner ---
 FROM node:22-slim
 
 WORKDIR /app
 
-# Install runtime basics
+# Install runtime dependencies
 RUN apt-get update && apt-get install -y graphicsmagick dumb-init
 
-# Copy built app
+# Copy the compiled app from the builder stage
 COPY --from=builder /app /app
 
+# Set Environment
 ENV NODE_ENV=production
 ENV PORT=5678
 EXPOSE 5678
