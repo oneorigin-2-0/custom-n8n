@@ -1,41 +1,43 @@
 # --- Stage 1: Build the Application ---
-FROM node:20-slim AS builder
+# UPDATED: Changed from node:20 to node:22
+FROM node:22-slim AS builder
 
-# Install system dependencies required for building
+# Install system dependencies
 RUN apt-get update && apt-get install -y python3 make g++ git
 
-# Enable pnpm (n8n uses pnpm, not npm)
+# Enable pnpm
 RUN corepack enable && corepack prepare pnpm@latest --activate
 
 WORKDIR /app
 
-# Copy all source code
+# Copy source
 COPY . .
 
-# Install dependencies and build
-# This step takes time! It compiles the whole project.
+# Install and build
+# This will now pass because we are on Node 22
 RUN pnpm install
 RUN pnpm build
 
-# Remove development files to keep the image smaller
+# Prune dev dependencies
 RUN pnpm prune --prod
 
 # --- Stage 2: Run the Application ---
-FROM node:20-slim
+# UPDATED: Changed from node:20 to node:22
+FROM node:22-slim
 
 WORKDIR /app
 
-# Install runtime dependencies (fonts, graphics tools for n8n)
+# Install runtime dependencies
 RUN apt-get update && apt-get install -y graphicsmagick dumb-init
 
-# Copy the built application from Stage 1
+# Copy built app
 COPY --from=builder /app /app
 
-# Set environment variables
+# Env vars
 ENV NODE_ENV=production
 ENV PORT=5678
 
 EXPOSE 5678
 
-# Start n8n using the CLI bin
+# Start
 CMD ["node", "packages/cli/bin/n8n"]
